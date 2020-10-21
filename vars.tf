@@ -2,6 +2,12 @@
 variable "Region" {
   type = string
 }
+variable "rdsDBName" {
+  type = string
+}
+variable "devAccountId" {
+  type = string
+}
 variable "availableZone" {
   type = list
 }
@@ -21,6 +27,9 @@ variable "sCIDR" {
   type = list
 }
 variable "destinationCIDR" {
+  type = string
+}
+variable "ec2Subnet_cidr" {
   type = string
 }
 variable "ingressCIDR" {
