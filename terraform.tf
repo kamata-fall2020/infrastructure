@@ -8,50 +8,50 @@ terraform {
   }
 }
 
- 
+
 
 provider "aws" {
-  profile = "dev"
-  region  = "us-east-1"
+  profile = var.providerProfile
+  region  = var.Region
 }
 
 #resource for creating s3 bucket
 
 resource "aws_s3_bucket" "bucket" {
-  bucket = "webapp.aditya.kamat"
-  acl    = "private"
-  force_destroy="true"
+  bucket        =  var.bucketName
+  acl           = "private"
+  force_destroy = "true"
 
- 
+
 
   tags = {
     Name        = "aditya_bucket"
     Environment = "dev"
   }
 
- 
+
   server_side_encryption_configuration {
     rule {
       apply_server_side_encryption_by_default {
-        sse_algorithm     = "aws:kms"
+        sse_algorithm = "aws:kms"
       }
     }
   }
 
- 
+
 
   lifecycle_rule {
     enabled = true
 
- 
+
     transition {
-      days = 30
+      days          = 30
       storage_class = "STANDARD_IA"
     }
   }
 }
 
-  
+
 
 #Point 1:  Create VPC
 resource "aws_vpc" "test_VPC" {
@@ -167,12 +167,12 @@ resource "aws_security_group" "database" {
 
 
 resource "aws_security_group_rule" "database" {
-  type      = "ingress"
-  from_port = 3306
-  to_port   = 3306
-  protocol  = "tcp"
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
   source_security_group_id = "${aws_security_group.My_VPC_Security_Group.id}"
-  security_group_id = "${aws_security_group.database.id}"
+  security_group_id        = "${aws_security_group.database.id}"
 }
 
 
@@ -182,40 +182,15 @@ resource "aws_db_instance" "db" {
   engine                 = "mysql"
   engine_version         = "5.7.22"
   instance_class         = "db.t2.micro"
-  identifier             = "csye6225-f20"
-  name                   = "csye6225"
-  username               = "aditya"
-  password               = "adityaKamat"
+  identifier             = var.db_identifier
+  name                   = var.rdsDBName
+  username               = var.db_username
+  password               = var.db_password
   skip_final_snapshot    = true
   db_subnet_group_name   = "${aws_db_subnet_group.db-subnet.name}"
   vpc_security_group_ids = ["${aws_security_group.database.id}"]
 }
 
-
-resource "aws_instance" "my_ec2_instance" {
-  ami                    = "${data.aws_ami.latest-ubuntu.id}"
-  instance_type          = "t2.micro"
-  vpc_security_group_ids = ["${aws_security_group.My_VPC_Security_Group.id}"]
-  subnet_id              = "${aws_subnet.test_VPC_Subnet[0].id}"
-  key_name               = "csye6225-fall2020-aws"
-  user_data = <<-EOF
-               #!/bin/bash
-               sudo echo export "Bucketname=${aws_s3_bucket.bucket.bucket}" >> /etc/environment
-               sudo echo export "DBhost=${aws_db_instance.db.address}" >> /etc/environment
-               sudo echo export "DBendpoint=${aws_db_instance.db.endpoint}" >> /etc/environment
-               sudo echo export "DBname=${var.rdsDBName}" >> /etc/environment
-               sudo echo export "DBusername=${aws_db_instance.db.username}" >> /etc/environment
-               sudo echo export "DBpassword=${aws_db_instance.db.password}" >> /etc/environment
-               EOF
-
-  root_block_device {
-    volume_type = "gp2"
-    volume_size = 20
-    delete_on_termination = true
-  }
-
-
-}
 
 resource "aws_db_subnet_group" "db-subnet" {
   name       = "test-group"
@@ -224,63 +199,104 @@ resource "aws_db_subnet_group" "db-subnet" {
 
 
 data "aws_ami" "latest-ubuntu" {
-most_recent = true
-owners = ["${var.devAccountId}"] 
+  most_recent = true
+  owners      = ["${var.devAccountId}"]
 }
 
-resource "aws_iam_role" "role" {
-  name = "test-role"
-
-  assume_role_policy = <<-EOF
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Action": "sts:AssumeRole",
-          "Principal": {
-            "Service": "ec2.amazonaws.com"
-          },
-          "Effect": "Allow",
-          "Sid": ""
-        }
-      ]
-    }
-EOF
-}
-
-resource "aws_iam_policy" "policy" {
-  name        = "WebAppS3"
-  description = "A WebAppS3 policy for S3 bucket"
-
-  policy = <<-EOF
+# IAM POLICY
+resource "aws_iam_policy" "WebAPPS3" {
+  name        = var.IAMPolicyName
+  description = "Policy for EC2 instance to use S3"
+  policy      = <<-EOF
 {
-  "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Action": [
-                "s3:*"
-            ],
-            "Effect": "Allow",
-            "Resource": [
-                "arn:aws:s3:::webapp.aditya.kamat",
-                "arn:aws:s3:::webapp.aditya.kamat/*"
+ "Version": "2012-10-17",
+ "Statement": [
+ {
+ "Effect": "Allow",
+ "Action": [
+ "s3:*"
+ ],
+  "Resource": [
+                "arn:aws:s3:::${var.bucketName}",
+                "arn:aws:s3:::${var.bucketName}/*"
             ]
-        }
-    ]
+ }
+ ]
 }
 EOF
 }
 
-resource "aws_iam_role_policy_attachment" "test-attach" {
-  role       = aws_iam_role.role.name
-  policy_arn = aws_iam_policy.policy.arn
+# IAM ROLE
+resource "aws_iam_role" "ec2role" {
+  name               = var.IAMRole
+  assume_role_policy = <<-EOF
+
+{
+ "Version": "2012-10-17",
+ "Statement": [
+ {
+ "Action": "sts:AssumeRole",
+ "Principal": {
+ "Service": "ec2.amazonaws.com"
+ },
+ "Effect": "Allow",
+ "Sid": ""
+ }
+ ]
+}
+EOF
+  tags = {
+    Name = "EC2 - S3 access policy"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "role_policy_attacher" {
+ role = aws_iam_role.ec2role.name
+ policy_arn = aws_iam_policy.WebAPPS3.arn
+}
+ 
+resource "aws_iam_instance_profile" "ec2_s3_profile" {
+ name = "ec2_s3_profile"
+ role = "${aws_iam_role.ec2role.name}"
+}
+
+
+
+resource "aws_instance" "my_ec2_instance" {
+  ami                    = "${data.aws_ami.latest-ubuntu.id}"
+  instance_type          = "t2.micro"
+  vpc_security_group_ids = ["${aws_security_group.My_VPC_Security_Group.id}"]
+  subnet_id              = "${aws_subnet.test_VPC_Subnet[0].id}"
+  key_name               = var.ec2KeyName
+  iam_instance_profile = "${aws_iam_instance_profile.ec2_s3_profile.name}"
+  user_data              = <<-EOF
+               #!/bin/bash
+               sudo echo export "Bucketname=${aws_s3_bucket.bucket.bucket}" >> /etc/environment
+               sudo echo export "Region=${var.Region}" >> /etc/environment
+               sudo echo export "DBhost=${aws_db_instance.db.address}" >> /etc/environment
+               sudo echo export "DBendpoint=${aws_db_instance.db.endpoint}" >> /etc/environment
+               sudo echo export "DBname=${aws_db_instance.db.name}" >> /etc/environment
+               sudo echo export "DBusername=${aws_db_instance.db.username}" >> /etc/environment
+               sudo echo export "DBpassword=${aws_db_instance.db.password}" >> /etc/environment
+               EOF
+
+  root_block_device {
+    volume_type           = "gp2"
+    volume_size           = 20
+    delete_on_termination = true
+  }
+  
+
+
 }
 
 
 resource "aws_dynamodb_table" "basic-dynamodb-table" {
-  name           = "csye6225"
+  name           = var.dynamodbTableName
   hash_key       = "Id"
- 
+  read_capacity  = 5
+  write_capacity = 5
+
 
   attribute {
     name = "Id"
