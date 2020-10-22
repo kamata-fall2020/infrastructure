@@ -2,6 +2,39 @@
 variable "Region" {
   type = string
 }
+variable "IAMRole" {
+  type = string
+}
+variable "ec2KeyName" {
+  type = string
+}
+variable "db_password" {
+  type = string
+}
+variable "db_username" {
+  type = string
+}
+variable "db_identifier" {
+  type = string
+}
+variable "IAMPolicyName" {
+  type = string
+}
+variable "dynamodbTableName" {
+  type = string
+}
+variable "providerProfile"{
+  type = string
+}
+variable "bucketName"{
+  type = string
+}
+variable "rdsDBName" {
+  type = string
+}
+variable "devAccountId" {
+  type = string
+}
 variable "availableZone" {
   type = list
 }
@@ -23,6 +56,9 @@ variable "sCIDR" {
 variable "destinationCIDR" {
   type = string
 }
+variable "ec2Subnet_cidr" {
+  type = string
+}
 variable "ingressCIDR" {
   type = list
 }
@@ -32,3 +68,4 @@ variable "egressCIDR" {
 variable "mapPubIP" {
   default = true
 }
+
