@@ -10,15 +10,21 @@ terraform {
 
 
 
-provider "aws" {
+provider "aws"  {
   profile = var.providerProfile
   region  = var.Region
 }
 
+# provider "aws" {
+#   alias = "ghactions"
+#   profile = var.ghactionsProfile
+#   region = var.ghactionsRegion
+# }
+
 #resource for creating s3 bucket
 
 resource "aws_s3_bucket" "bucket" {
-  bucket        =  var.bucketName
+  bucket        =  "${var.providerProfile}.${var.bucketName}"
   acl           = "private"
   force_destroy = "true"
 
@@ -26,7 +32,7 @@ resource "aws_s3_bucket" "bucket" {
 
   tags = {
     Name        = "aditya_bucket"
-    Environment = "dev"
+    Environment = "${var.providerProfile}"
   }
 
 
@@ -203,7 +209,7 @@ data "aws_ami" "latest-ubuntu" {
   owners      = ["${var.devAccountId}"]
 }
 
-# IAM POLICY
+# IAM POLICY for Webapp
 resource "aws_iam_policy" "WebAPPS3" {
   name        = var.IAMPolicyName
   description = "Policy for EC2 instance to use S3"
@@ -217,11 +223,162 @@ resource "aws_iam_policy" "WebAPPS3" {
  "s3:*"
  ],
   "Resource": [
-                "arn:aws:s3:::${var.bucketName}",
-                "arn:aws:s3:::${var.bucketName}/*"
+                "arn:aws:s3:::${var.providerProfile}.${var.bucketName}",
+                "arn:aws:s3:::${var.providerProfile}.${var.bucketName}/*"
             ]
  }
  ]
+}
+EOF
+}
+
+#IAM policy for CodeDeploy to use S3 for read
+resource "aws_iam_policy" "CodeDeploy-EC2-S3" {
+  name        = var.IAMCodeDeployPolicyName
+  description = "IAM policy for CodeDeploy to use S3 for read"
+  policy      = <<-EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "s3:Get*",
+                "s3:List*"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+              "arn:aws:s3:::${var.providerProfile}.${var.codeDeployBucketName}",
+              "arn:aws:s3:::${var.providerProfile}.${var.codeDeployBucketName}/*"
+              ]
+        }
+    ]
+}
+EOF
+}
+
+#IAM policy to let ghactions upload latest artifact to dedicated s3
+resource "aws_iam_user_policy" "GH-Upload-To-S3" {
+  name        = var.IAMGHUploadS3PolicyName
+  user        = "ghactionsCICD"
+  #description = "Policy for EC2 instance to use S3"
+  policy      = <<-EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "s3:Get*",
+                "s3:List*"
+            ],
+            "Resource": [
+              "arn:aws:s3:::${var.providerProfile}.${var.codeDeployBucketName}",
+              "arn:aws:s3:::${var.providerProfile}.${var.codeDeployBucketName}/*"
+            ]
+        }
+    ]
+}
+EOF
+}
+
+#GH-Code-Deploy policy allows GitHub Actions to call CodeDeploy APIs to initiate application deployment on EC2 instances.
+
+resource "aws_iam_user_policy" "GH-Code-Deploy" {
+  name        = var.IAMGHCodeDeployPolicyName
+  user        = "ghactionsCICD"
+  policy      = <<-EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codedeploy:RegisterApplicationRevision",
+        "codedeploy:GetApplicationRevision"
+      ],
+      "Resource": [
+        "arn:aws:codedeploy:${var.Region}:${var.devProdAccountId}:application:${var.appName}"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codedeploy:CreateDeployment",
+        "codedeploy:GetDeployment"
+      ],
+      "Resource": [
+        "*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codedeploy:GetDeploymentConfig"
+      ],
+      "Resource": [
+        "arn:aws:codedeploy:${var.Region}:${var.devProdAccountId}:deploymentconfig:CodeDeployDefault.OneAtATime",
+        "arn:aws:codedeploy:${var.Region}:${var.devProdAccountId}:deploymentconfig:CodeDeployDefault.HalfAtATime",
+        "arn:aws:codedeploy:${var.Region}:${var.devProdAccountId}:deploymentconfig:CodeDeployDefault.AllAtOnce"
+      ]
+    }
+  ]
+}
+EOF
+}
+
+
+resource "aws_iam_user_policy" "gh-ec2-ami" {
+  name        = var.IAMGHEC2AMIPolicyName
+  user        = "ghactionsCICD"
+  #description = "Policy for EC2 instance to use S3"
+  policy      = <<-EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AttachVolume",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CopyImage",
+        "ec2:CreateImage",
+        "ec2:CreateKeypair",
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateSnapshot",
+        "ec2:CreateTags",
+        "ec2:CreateVolume",
+        "ec2:DeleteKeyPair",
+        "ec2:DeleteSecurityGroup",
+        "ec2:DeleteSnapshot",
+        "ec2:DeleteVolume",
+        "ec2:DeregisterImage",
+        "ec2:DescribeImageAttribute",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeRegions",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSnapshots",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVolumes",
+        "ec2:DetachVolume",
+        "ec2:GetPasswordData",
+        "ec2:ModifyImageAttribute",
+        "ec2:ModifyInstanceAttribute",
+        "ec2:ModifySnapshotAttribute",
+        "ec2:RegisterImage",
+        "ec2:RunInstances",
+        "ec2:StopInstances",
+        "ec2:TerminateInstances"
+      ],
+      "Resource":[
+        "arn:aws:s3:::${var.providerProfile}.${var.codeDeployBucketName}",
+        "arn:aws:s3:::${var.providerProfile}.${var.codeDeployBucketName}/*"
+      ]
+    }
+  ]
 }
 EOF
 }
@@ -230,7 +387,6 @@ EOF
 resource "aws_iam_role" "ec2role" {
   name               = var.IAMRole
   assume_role_policy = <<-EOF
-
 {
  "Version": "2012-10-17",
  "Statement": [
@@ -250,17 +406,103 @@ EOF
   }
 }
 
+# IAM ROLE Create CodeDeployEC2ServiceRole IAM Role for EC2 Instance(s)
+resource "aws_iam_role" "CodeDeployEC2ServiceRole" {
+  name               = "CodeDeployEC2ServiceRole"
+  assume_role_policy = <<-EOF
+{
+ "Version": "2012-10-17",
+ "Statement": [
+ {
+ "Action": "sts:AssumeRole",
+ "Principal": {
+ "Service": "ec2.amazonaws.com"
+ },
+ "Effect": "Allow",
+ "Sid": ""
+ }
+ ]
+}
+EOF
+  tags = {
+    Name = "CodeDeploy - EC2 service role"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "codedeploy_ec2_service" {
+  role       = aws_iam_role.CodeDeployEC2ServiceRole.name
+  policy_arn = "arn:aws:iam::${var.devProdAccountId}:policy/${aws_iam_policy.CodeDeploy-EC2-S3.name}"
+}
+
+#CodeDeployEC2ServiceRole
+#CodeDeployServiceRole
+resource "aws_iam_role" "CodeDeployServiceRole" {
+  name               = "CodeDeployServiceRole"
+  assume_role_policy = <<-EOF
+{
+ "Version": "2012-10-17",
+ "Statement": [
+ {
+ "Action": "sts:AssumeRole",
+ "Principal": {
+ "Service": "codedeploy.amazonaws.com"
+ },
+ "Effect": "Allow",
+ "Sid": ""
+ }
+ ]
+}
+EOF
+  tags = {
+    Name = "CodeDeploy - Service role"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "codedeploy_service" {
+  role       = aws_iam_role.CodeDeployServiceRole.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"
+}
+
+
 resource "aws_iam_role_policy_attachment" "role_policy_attacher" {
- role = aws_iam_role.ec2role.name
+ role = aws_iam_role.CodeDeployEC2ServiceRole.name
  policy_arn = aws_iam_policy.WebAPPS3.arn
 }
  
-resource "aws_iam_instance_profile" "ec2_s3_profile" {
- name = "ec2_s3_profile"
- role = "${aws_iam_role.ec2role.name}"
+
+
+resource "aws_codedeploy_app" "csye6225-webapp" {
+  compute_platform = "Server"
+  name             = "csye6225-webapp"
 }
 
+resource "aws_codedeploy_deployment_group" "csye6225-webapp-deployment" {
+  app_name              = "${aws_codedeploy_app.csye6225-webapp.name}"
+  deployment_group_name = "csye6225-webapp-deployment"
+  service_role_arn      = "arn:aws:iam::${var.devProdAccountId}:role/CodeDeployServiceRole"
+  deployment_config_name = "CodeDeployDefault.AllAtOnce"
 
+
+  ec2_tag_set {
+    ec2_tag_filter {
+      key   = "Name"
+      type  = "KEY_AND_VALUE"
+      value = "ec2_app_server"
+    }
+
+  }
+
+  auto_rollback_configuration {
+    enabled = false
+  }
+
+}
+
+#Creating a Instance profile
+resource "aws_iam_instance_profile" "ec2_s3_profile" {
+ name = "ec2_s3_profile"
+ role = aws_iam_role.CodeDeployEC2ServiceRole.name
+}
 
 resource "aws_instance" "my_ec2_instance" {
   ami                    = "${data.aws_ami.latest-ubuntu.id}"
@@ -285,9 +527,28 @@ resource "aws_instance" "my_ec2_instance" {
     volume_size           = 20
     delete_on_termination = true
   }
+  tags = {
+ Name = "ec2_app_server"
+ 
+ }
   
 
 
+}
+
+data "aws_route53_zone" "selected" {
+  name         = "${var.providerProfile}.adityakamatcsye.me"
+  private_zone = false
+}
+
+
+resource "aws_route53_record" "dns-record" {
+  zone_id = data.aws_route53_zone.selected.zone_id
+  allow_overwrite = true
+  name    = "api.${data.aws_route53_zone.selected.name}"
+  type    = "A"
+  ttl     = "60"
+  records = ["${aws_instance.my_ec2_instance.public_ip}"]
 }
 
 

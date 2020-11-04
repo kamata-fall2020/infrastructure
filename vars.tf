@@ -2,6 +2,36 @@
 variable "Region" {
   type = string
 }
+variable "zone_id" {
+  type = string
+}
+variable "ghactionsRegion" {
+  type = string
+}
+variable "IAMGHUploadS3PolicyName" {
+  type = string
+}
+variable "codeDeployBucketName" {
+  type = string
+}
+variable "IAMCodeDeployPolicyName" {
+  type = string
+}
+variable "IAMGHCodeDeployPolicyName" {
+  type = string
+}
+variable "appName" {
+  type = string
+}
+variable "IAMGHEC2AMIPolicyName" {
+  type = string
+}
+variable "devProdAccountId" {
+  type = string
+}
+variable "ghactionsProfile" {
+  type = string
+}
 variable "IAMRole" {
   type = string
 }
