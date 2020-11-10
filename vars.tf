@@ -20,6 +20,9 @@ variable "IAMCodeDeployPolicyName" {
 variable "IAMGHCodeDeployPolicyName" {
   type = string
 }
+variable "CloudWatchPolicyName" {
+  type = string
+}
 variable "appName" {
   type = string
 }
