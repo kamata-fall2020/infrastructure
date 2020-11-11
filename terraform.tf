@@ -383,6 +383,40 @@ resource "aws_iam_user_policy" "gh-ec2-ami" {
 EOF
 }
 
+resource "aws_iam_policy" "cloud_Watch_Agent_Server_Policy" {
+  name        = var.CloudWatchPolicyName
+  policy      = <<-EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:PutMetricData",
+                "ec2:DescribeVolumes",
+                "ec2:DescribeTags",
+                "logs:PutLogEvents",
+                "logs:DescribeLogStreams",
+                "logs:DescribeLogGroups",
+                "logs:CreateLogStream",
+                "logs:CreateLogGroup"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:GetParameter"
+            ],
+            "Resource": "arn:aws:ssm:*:*:parameter/AmazonCloudWatch-*"
+        }
+    ]
+}
+EOF
+}
+
+
+
 # IAM ROLE
 resource "aws_iam_role" "ec2role" {
   name               = var.IAMRole
@@ -467,6 +501,11 @@ resource "aws_iam_role_policy_attachment" "codedeploy_service" {
 resource "aws_iam_role_policy_attachment" "role_policy_attacher" {
  role = aws_iam_role.CodeDeployEC2ServiceRole.name
  policy_arn = aws_iam_policy.WebAPPS3.arn
+}
+
+resource "aws_iam_role_policy_attachment" "cloud_policy_attacher" {
+ role = aws_iam_role.CodeDeployEC2ServiceRole.name
+ policy_arn = aws_iam_policy.cloud_Watch_Agent_Server_Policy.arn
 }
  
 
