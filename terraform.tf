@@ -32,7 +32,7 @@ resource "aws_s3_bucket" "bucket" {
 
   tags = {
     Name        = "aditya_bucket"
-    Environment = "${var.providerProfile}"
+    Environment = var.providerProfile
   }
 
 
@@ -127,33 +127,29 @@ resource "aws_security_group" "My_VPC_Security_Group" {
 
   # allow ingress of port 22
   ingress {
-    cidr_blocks = var.ingressCIDR
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
+    security_groups = ["${aws_security_group.loadbalancer.id}"]
   }
-
   ingress {
-    cidr_blocks = var.ingressCIDR
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
+    security_groups = ["${aws_security_group.loadbalancer.id}"]
   }
-
   ingress {
-    cidr_blocks = var.ingressCIDR
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
+    security_groups = ["${aws_security_group.loadbalancer.id}"]
   }
-
   ingress {
-    cidr_blocks = var.ingressCIDR
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
+    security_groups = ["${aws_security_group.loadbalancer.id}"]
   }
-
   # allow egress of all ports
   egress {
     from_port   = 0
@@ -519,7 +515,16 @@ resource "aws_codedeploy_deployment_group" "csye6225-webapp-deployment" {
   app_name              = "${aws_codedeploy_app.csye6225-webapp.name}"
   deployment_group_name = "csye6225-webapp-deployment"
   service_role_arn      = "arn:aws:iam::${var.devProdAccountId}:role/CodeDeployServiceRole"
+  autoscaling_groups = ["${aws_autoscaling_group.autoscaling.name}"]
   deployment_config_name = "CodeDeployDefault.AllAtOnce"
+
+   load_balancer_info {
+    target_group_info {
+      name = "${aws_lb_target_group.alb-target-group.name}"
+    }
+  }
+
+  #autoscaling_groups = ["${aws_autoscaling_group.auto_scale.name}"]
 
 
   ec2_tag_set {
@@ -537,12 +542,17 @@ resource "aws_codedeploy_deployment_group" "csye6225-webapp-deployment" {
 
 }
 
+
+
+
+
 #Creating a Instance profile
 resource "aws_iam_instance_profile" "ec2_s3_profile" {
  name = "ec2_s3_profile"
  role = aws_iam_role.CodeDeployEC2ServiceRole.name
 }
 
+/*
 resource "aws_instance" "my_ec2_instance" {
   ami                    = "${data.aws_ami.latest-ubuntu.id}"
   instance_type          = "t2.micro"
@@ -573,21 +583,201 @@ resource "aws_instance" "my_ec2_instance" {
   
 
 
+} 
+*/
+
+
+# aws launch configuration
+resource "aws_launch_configuration" "launch_config" {
+  name          = "launch_config"
+  image_id      = "${data.aws_ami.latest-ubuntu.id}"
+  instance_type = "t2.micro"
+  security_groups = ["${aws_security_group.My_VPC_Security_Group.id}"]
+  key_name        = var.ec2KeyName
+  iam_instance_profile = "${aws_iam_instance_profile.ec2_s3_profile.name}"
+  user_data              = <<-EOF
+               #!/bin/bash
+               sudo echo export "Bucketname=${aws_s3_bucket.bucket.bucket}" >> /etc/environment
+               sudo echo export "Region=${var.Region}" >> /etc/environment
+               sudo echo export "DBhost=${aws_db_instance.db.address}" >> /etc/environment
+               sudo echo export "DBendpoint=${aws_db_instance.db.endpoint}" >> /etc/environment
+               sudo echo export "DBname=${aws_db_instance.db.name}" >> /etc/environment
+               sudo echo export "DBusername=${aws_db_instance.db.username}" >> /etc/environment
+               sudo echo export "DBpassword=${aws_db_instance.db.password}" >> /etc/environment
+               EOF
+
+  associate_public_ip_address = true
+  root_block_device {
+    volume_type = "gp2"
+    volume_size = "20"
+    delete_on_termination = true
+  }
+
+  depends_on = [aws_s3_bucket.bucket,aws_db_instance.db]
 }
+
+# Auto Scaling Group
+resource "aws_autoscaling_group" "autoscaling" {
+  name                 = "autoscaling"
+  launch_configuration = "${aws_launch_configuration.launch_config.name}"
+  min_size             = 3
+  max_size             = 5
+  default_cooldown     = 60
+  desired_capacity     = 3
+  vpc_zone_identifier = ["${aws_subnet.test_VPC_Subnet[0].id}"]
+  
+  target_group_arns    = ["${aws_lb_target_group.alb-target-group.arn}"]
+
+  tag {
+    key                 = "Name"
+    value               = "ec2_app_server"
+    propagate_at_launch = true
+  }
+}
+
+resource "aws_lb_target_group" "alb-target-group" {  
+  name     = "alb-target-group"  
+  port     = "8080"  
+  protocol = "HTTP"  
+  vpc_id   = "${aws_vpc.test_VPC.id}"   
+  tags     = {    
+    name = "alb-target-group"    
+  }   
+}
+
+
+
+# Auto scaling Policies
+resource "aws_autoscaling_policy" "WebServerScaleUpPolicy" {
+  name                   = "WebServerScaleUpPolicy"
+  scaling_adjustment     = 1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 30
+  autoscaling_group_name = "${aws_autoscaling_group.autoscaling.name}"
+}
+
+resource "aws_autoscaling_policy" "WebServerScaleDownPolicy" {
+  name                   = "WebServerScaleDownPolicy"
+  scaling_adjustment     = -1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 30
+  autoscaling_group_name = "${aws_autoscaling_group.autoscaling.name}"
+}
+
+resource "aws_cloudwatch_metric_alarm" "CPUAlarmHigh" {
+  alarm_name          = "CPUAlarmHigh"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "5"
+  dimensions = {
+    AutoScalingGroupName = "${aws_autoscaling_group.autoscaling.name}"
+  }
+  alarm_description = "ec2 cpu utilization"
+  alarm_actions     = ["${aws_autoscaling_policy.WebServerScaleUpPolicy.arn}"]
+}
+
+resource "aws_cloudwatch_metric_alarm" "CPUAlarmLow" {
+  alarm_name          = "CPUAlarmLow"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "3"
+  dimensions = {
+    AutoScalingGroupName = "${aws_autoscaling_group.autoscaling.name}"
+  }
+  alarm_description = "This metric monitors ec2 cpu utilization"
+  alarm_actions     = ["${aws_autoscaling_policy.WebServerScaleDownPolicy.arn}"]
+}
+
+
+
+# Load Balancer Security Group
+resource "aws_security_group" "loadbalancer" {
+  name          = "loadbalancer_security_group"
+  vpc_id        = aws_vpc.test_VPC.id
+  ingress{
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks  = ["0.0.0.0/0"]
+  }
+
+  ingress{
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks  = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags          = {
+    Name        = "loadbalancer_security_group"
+    Environment = "${var.providerProfile}"
+  }
+}
+
+
+resource "aws_lb" "appLoadbalancer" {
+  name               = "appLoadbalancer"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = ["${aws_security_group.loadbalancer.id}"]
+  subnets            = "${aws_subnet.test_VPC_Subnet.*.id}"
+  ip_address_type    = "ipv4"
+  tags = {
+    Environment = "${var.providerProfile}"
+    Name = "appLoadbalancer"
+  }
+
+}
+
+resource "aws_lb_listener" "webapp_listener" {
+  load_balancer_arn = "${aws_lb.appLoadbalancer.arn}"
+  port              = "80"
+  protocol          = "HTTP"
+  
+
+  default_action {
+    type             = "forward"
+    target_group_arn = "${aws_lb_target_group.alb-target-group.arn}"
+  }
+}
+
+
+
+
+
 
 data "aws_route53_zone" "selected" {
   name         = "${var.providerProfile}.adityakamatcsye.me"
-  private_zone = false
+ # private_zone = false
 }
+
+
 
 
 resource "aws_route53_record" "dns-record" {
   zone_id = data.aws_route53_zone.selected.zone_id
-  allow_overwrite = true
   name    = "api.${data.aws_route53_zone.selected.name}"
   type    = "A"
-  ttl     = "60"
-  records = ["${aws_instance.my_ec2_instance.public_ip}"]
+
+  alias {
+    name    = "${aws_lb.appLoadbalancer.dns_name}"
+    zone_id = "${aws_lb.appLoadbalancer.zone_id}"
+    evaluate_target_health = true
+  }
 }
 
 
@@ -605,3 +795,4 @@ resource "aws_dynamodb_table" "basic-dynamodb-table" {
 
 
 }
+
