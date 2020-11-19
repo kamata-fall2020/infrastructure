@@ -126,30 +126,30 @@ resource "aws_security_group" "My_VPC_Security_Group" {
   description = "My VPC Security Group"
 
   # allow ingress of port 22
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    security_groups = ["${aws_security_group.loadbalancer.id}"]
-  }
+  # ingress {
+  #   from_port   = 22
+  #   to_port     = 22
+  #   protocol    = "tcp"
+  #   security_groups = ["${aws_security_group.loadbalancer.id}"]
+  # }
   ingress {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
     security_groups = ["${aws_security_group.loadbalancer.id}"]
   }
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    security_groups = ["${aws_security_group.loadbalancer.id}"]
-  }
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    security_groups = ["${aws_security_group.loadbalancer.id}"]
-  }
+  # ingress {
+  #   from_port   = 443
+  #   to_port     = 443
+  #   protocol    = "tcp"
+  #   security_groups = ["${aws_security_group.loadbalancer.id}"]
+  # }
+  # ingress {
+  #   from_port   = 80
+  #   to_port     = 80
+  #   protocol    = "tcp"
+  #   security_groups = ["${aws_security_group.loadbalancer.id}"]
+  # }
   # allow egress of all ports
   egress {
     from_port   = 0
@@ -652,7 +652,7 @@ resource "aws_autoscaling_policy" "WebServerScaleUpPolicy" {
   name                   = "WebServerScaleUpPolicy"
   scaling_adjustment     = 1
   adjustment_type        = "ChangeInCapacity"
-  cooldown               = 30
+  cooldown               = 60
   autoscaling_group_name = "${aws_autoscaling_group.autoscaling.name}"
 }
 
@@ -660,7 +660,7 @@ resource "aws_autoscaling_policy" "WebServerScaleDownPolicy" {
   name                   = "WebServerScaleDownPolicy"
   scaling_adjustment     = -1
   adjustment_type        = "ChangeInCapacity"
-  cooldown               = 30
+  cooldown               = 60
   autoscaling_group_name = "${aws_autoscaling_group.autoscaling.name}"
 }
 
