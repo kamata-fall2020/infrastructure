@@ -515,6 +515,7 @@ resource "aws_codedeploy_deployment_group" "csye6225-webapp-deployment" {
   app_name              = "${aws_codedeploy_app.csye6225-webapp.name}"
   deployment_group_name = "csye6225-webapp-deployment"
   service_role_arn      = "arn:aws:iam::${var.devProdAccountId}:role/CodeDeployServiceRole"
+  autoscaling_groups = ["${aws_autoscaling_group.autoscaling.name}"]
   deployment_config_name = "CodeDeployDefault.AllAtOnce"
 
    load_balancer_info {
@@ -522,6 +523,8 @@ resource "aws_codedeploy_deployment_group" "csye6225-webapp-deployment" {
       name = "${aws_lb_target_group.alb-target-group.name}"
     }
   }
+
+  #autoscaling_groups = ["${aws_autoscaling_group.auto_scale.name}"]
 
 
   ec2_tag_set {
@@ -615,7 +618,7 @@ resource "aws_launch_configuration" "launch_config" {
 
 # Auto Scaling Group
 resource "aws_autoscaling_group" "autoscaling" {
-  name                 = "autoscaling_group"
+  name                 = "autoscaling"
   launch_configuration = "${aws_launch_configuration.launch_config.name}"
   min_size             = 3
   max_size             = 5
