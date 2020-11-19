@@ -125,13 +125,14 @@ resource "aws_security_group" "My_VPC_Security_Group" {
   name        = "My VPC Security Group"
   description = "My VPC Security Group"
 
-  # allow ingress of port 22
-  # ingress {
-  #   from_port   = 22
-  #   to_port     = 22
-  #   protocol    = "tcp"
-  #   security_groups = ["${aws_security_group.loadbalancer.id}"]
-  # }
+  #allow ingress of port 22
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    security_groups = ["${aws_security_group.loadbalancer.id}"]
+  }
+
   ingress {
     from_port   = 8080
     to_port     = 8080
