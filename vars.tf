@@ -38,6 +38,10 @@ variable "ghactionsProfile" {
 variable "IAMRole" {
   type = string
 }
+
+variable "domainName" {
+  type = string
+}
 variable "ec2KeyName" {
   type = string
 }
@@ -60,6 +64,9 @@ variable "providerProfile"{
   type = string
 }
 variable "bucketName"{
+  type = string
+}
+variable "lambdaBucketName"{
   type = string
 }
 variable "rdsDBName" {
@@ -100,5 +107,8 @@ variable "egressCIDR" {
 }
 variable "mapPubIP" {
   default = true
+}
+variable "TimeToLive" {
+  type = number
 }
 
