@@ -131,27 +131,17 @@ resource "aws_security_group" "My_VPC_Security_Group" {
     to_port     = 22
     protocol    = "tcp"
     security_groups = ["${aws_security_group.loadbalancer.id}"]
+    #cidr_blocks = ["0.0.0.0/0"]
+
   }
 
   ingress {
     from_port   = 8080
     to_port     = 8080
-    protocol    = "tcp"
+    protocol    = "tcp"   
     security_groups = ["${aws_security_group.loadbalancer.id}"]
   }
-  # ingress {
-  #   from_port   = 443
-  #   to_port     = 443
-  #   protocol    = "tcp"
-  #   security_groups = ["${aws_security_group.loadbalancer.id}"]
-  # }
-  # ingress {
-  #   from_port   = 80
-  #   to_port     = 80
-  #   protocol    = "tcp"
-  #   security_groups = ["${aws_security_group.loadbalancer.id}"]
-  # }
-  # allow egress of all ports
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -184,7 +174,7 @@ resource "aws_db_instance" "db" {
   storage_type           = "gp2"
   engine                 = "mysql"
   engine_version         = "5.7.22"
-  instance_class         = "db.t2.micro"
+  instance_class         = "db.t2.small"
   identifier             = var.db_identifier
   name                   = var.rdsDBName
   username               = var.db_username
@@ -192,7 +182,14 @@ resource "aws_db_instance" "db" {
   skip_final_snapshot    = true
   db_subnet_group_name   = "${aws_db_subnet_group.db-subnet.name}"
   vpc_security_group_ids = ["${aws_security_group.database.id}"]
+  storage_encrypted = true
+  #ca_cert_identifier      = "${var.ca_cert_identifier}"
+  publicly_accessible = true
+  multi_az = false
+  parameter_group_name = "${aws_db_parameter_group.rds.name}"
+  #performance_insights_enabled = true
 }
+
 
 
 resource "aws_db_subnet_group" "db-subnet" {
@@ -585,39 +582,6 @@ resource "aws_iam_instance_profile" "iam_instance_profile" {
  role = aws_iam_role.CodeDeployEC2ServiceRole.name
 }
 
-/*
-resource "aws_instance" "my_ec2_instance" {
-  ami                    = "${data.aws_ami.latest-ubuntu.id}"
-  instance_type          = "t2.micro"
-  vpc_security_group_ids = ["${aws_security_group.My_VPC_Security_Group.id}"]
-  subnet_id              = "${aws_subnet.test_VPC_Subnet[0].id}"
-  key_name               = var.ec2KeyName
-  iam_instance_profile = "${aws_iam_instance_profile.iam_instance_profile.name}"
-  user_data              = <<-EOF
-               #!/bin/bash
-               sudo echo export "Bucketname=${aws_s3_bucket.bucket.bucket}" >> /etc/environment
-               sudo echo export "Region=${var.Region}" >> /etc/environment
-               sudo echo export "DBhost=${aws_db_instance.db.address}" >> /etc/environment
-               sudo echo export "DBendpoint=${aws_db_instance.db.endpoint}" >> /etc/environment
-               sudo echo export "DBname=${aws_db_instance.db.name}" >> /etc/environment
-               sudo echo export "DBusername=${aws_db_instance.db.username}" >> /etc/environment
-               sudo echo export "DBpassword=${aws_db_instance.db.password}" >> /etc/environment
-               EOF
-
-  root_block_device {
-    volume_type           = "gp2"
-    volume_size           = 20
-    delete_on_termination = true
-  }
-  tags = {
- Name = "ec2_app_server"
- 
- }
-  
-
-
-} 
-*/
 
 
 # aws launch configuration
@@ -684,6 +648,12 @@ resource "aws_lb_target_group" "alb-target-group" {
 }
 
 
+data "aws_acm_certificate" "ssl_certificate" {
+  domain = "${var.providerProfile}.${var.domainName}"
+  statuses = ["ISSUED"]
+}
+
+
 
 # Auto scaling Policies
 resource "aws_autoscaling_policy" "WebServerScaleUpPolicy" {
@@ -740,12 +710,6 @@ resource "aws_cloudwatch_metric_alarm" "CPUAlarmLow" {
 resource "aws_security_group" "loadbalancer" {
   name          = "loadbalancer_security_group"
   vpc_id        = aws_vpc.test_VPC.id
-  ingress{
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks  = ["0.0.0.0/0"]
-  }
 
   ingress{
     from_port   = 443
@@ -753,6 +717,8 @@ resource "aws_security_group" "loadbalancer" {
     protocol    = "tcp"
     cidr_blocks  = ["0.0.0.0/0"]
   }
+
+
 
   egress {
     from_port = 0
@@ -764,6 +730,19 @@ resource "aws_security_group" "loadbalancer" {
     Name        = "loadbalancer_security_group"
     Environment = "${var.providerProfile}"
   }
+}
+
+resource "aws_db_parameter_group" "rds" {
+  name   = "rds-pg"
+  family = "mysql5.7"
+  
+
+  parameter {
+    name  = "performance_schema"
+    value = 1
+    apply_method = "pending-reboot"
+  }
+
 }
 
 
@@ -783,10 +762,10 @@ resource "aws_lb" "appLoadbalancer" {
 
 resource "aws_lb_listener" "webapp_listener" {
   load_balancer_arn = "${aws_lb.appLoadbalancer.arn}"
-  port              = "80"
-  protocol          = "HTTP"
+  port              = "443"
+  protocol          = "HTTPS"
+  certificate_arn   = "${data.aws_acm_certificate.ssl_certificate.arn}"
   
-
   default_action {
     type             = "forward"
     target_group_arn = "${aws_lb_target_group.alb-target-group.arn}"
@@ -805,10 +784,10 @@ data "aws_route53_zone" "selected" {
 
 
 
-
+#api
 resource "aws_route53_record" "dns-record" {
   zone_id = data.aws_route53_zone.selected.zone_id
-  name    = "api.${data.aws_route53_zone.selected.name}"
+  name    = "${data.aws_route53_zone.selected.name}"
   type    = "A"
 
   alias {
